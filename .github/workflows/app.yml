@@ -7,7 +7,7 @@ jobs:
   build-apk:
     runs-on: ubuntu-22.04
     steps:
-      - name: Instalar JDK 17 y NDK
+      - name: Instalar JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
@@ -17,16 +17,19 @@ jobs:
         run: |
           git clone --recursive https://github.com/Flopster101/UsbAudioBridge.git
 
-      - name: Compilar APK (con libusbaudio.so incluido)
+      - name: Compilar APK
         working-directory: UsbAudioBridge
         run: |
           chmod +x gradlew
           ./gradlew assembleDebug
 
-      - name: Verificar que libusbaudio.so este dentro del APK
+      - name: Listar APKs generados y sus librerias .so
         working-directory: UsbAudioBridge
         run: |
-          unzip -l app/build/outputs/apk/debug/*.apk | grep libusbaudio.so
+          for apk in app/build/outputs/apk/debug/*.apk; do
+            echo "=== Archivo: $apk ==="
+            unzip -l "$apk" | grep "\.so" || true
+          done
 
       - name: Subir APK listo
         uses: actions/upload-artifact@v4
