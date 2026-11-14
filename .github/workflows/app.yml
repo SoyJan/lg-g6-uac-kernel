@@ -1,38 +1,26 @@
-name: Build USB Audio Bridge APK
+name: Inspect UsbAudioBridge Native Build
 
 on:
   workflow_dispatch:
 
 jobs:
-  build-apk:
+  inspect:
     runs-on: ubuntu-22.04
     steps:
-      - name: Instalar JDK 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: '17'
-
-      - name: Clonar UsbAudioBridge con submodulos (oboe + tinyalsa)
+      - name: Clonar e inspeccionar configuracion C++
         run: |
-          git clone --recursive https://github.com/Flopster101/UsbAudioBridge.git
-
-      - name: Compilar APK
-        working-directory: UsbAudioBridge
-        run: |
-          chmod +x gradlew
-          ./gradlew assembleDebug
-
-      - name: Listar APKs generados y sus librerias .so
-        working-directory: UsbAudioBridge
-        run: |
-          for apk in app/build/outputs/apk/debug/*.apk; do
-            echo "=== Archivo: $apk ==="
-            unzip -l "$apk" | grep "\.so" || true
+          git clone https://github.com/Flopster101/UsbAudioBridge.git
+          cd UsbAudioBridge
+          echo "=== 1. Donde se menciona usbaudio ==="
+          grep -rn "usbaudio" . || true
+          echo "=== 2. Archivos de compilacion nativa ==="
+          find . -maxdepth 5 \( -name "CMakeLists.txt" -o -name "*.mk" -o -name "Makefile" -o -name "*.gradle*" -o -name "*.yml" \)
+          echo "=== 3. Contenido de .github/workflows ==="
+          cat .github/workflows/*.yml || true
+          echo "=== 4. Contenido de app/build.gradle.kts ==="
+          cat app/build.gradle.kts || true
+          echo "=== 5. Contenido de CMakeLists.txt / Makefiles ==="
+          find app -name "CMakeLists.txt" -o -name "Makefile" -o -name "*.mk" | while read f; do
+            echo "--- Archivo: $f ---"
+            cat "$f"
           done
-
-      - name: Subir APK listo
-        uses: actions/upload-artifact@v4
-        with:
-          name: UsbAudioBridge-Fixed-APK
-          path: UsbAudioBridge/app/build/outputs/apk/debug/*.apk
