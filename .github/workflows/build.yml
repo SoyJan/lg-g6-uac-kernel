@@ -1,0 +1,107 @@
+name: Build LG G6 (H873) LineageOS 22.2 UAC Kernel
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-kernel:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Instalar dependencias de compilación
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bc bison build-essential ccache curl flex \
+            g++-multilib gcc-multilib git gnupg gperf imagemagick \
+            lib32ncurses5-dev lib32readline-dev lib32z1-dev liblz4-tool \
+            libncurses5 libncurses5-dev libsdl1.2-dev libssl-dev \
+            libxml2 libxml2-utils lzop pngcrush rsync schedtool \
+            squashfs-tools xsltproc zip zlib1g-dev python-is-python3 python2
+
+      - name: Clonar Kernel oficial LineageOS 22.2 y Compiladores
+        run: |
+          git clone --depth=1 -b lineage-22.2 https://github.com/LineageOS/android_kernel_lge_msm8996.git kernel
+          git clone --depth=1 -b lineage-20.0 https://github.com/LineageOS/android_prebuilts_clang_kernel_linux-x86_clang-r416183b.git clang
+          git clone --depth=1 -b lineage-19.1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9.git gcc64
+          git clone --depth=1 -b lineage-19.1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9.git gcc32
+
+      - name: Configurar Kernel con soporte USB DAC (UAC1 y UAC2)
+        run: |
+          cd kernel
+          mkdir -p out
+
+          if [ -f "$GITHUB_WORKSPACE/config.gz" ]; then
+            echo "Usando config.gz extraído del teléfono..."
+            zcat "$GITHUB_WORKSPACE/config.gz" > out/.config
+          else
+            echo "Generando defconfig desde el árbol de LineageOS..."
+            FRAGMENTS="msm8996_defconfig"
+            [ -f arch/arm64/configs/vendor/lge/g6.config ] && FRAGMENTS="$FRAGMENTS vendor/lge/g6.config"
+            [ -f arch/arm64/configs/vendor/lge/lucye.config ] && FRAGMENTS="$FRAGMENTS vendor/lge/lucye.config"
+            [ -f arch/arm64/configs/vendor/lge/h873.config ] && FRAGMENTS="$FRAGMENTS vendor/lge/h873.config"
+            make O=out ARCH=arm64 $FRAGMENTS
+          fi
+
+          # Activar drivers USB Audio Class Gadget (UAC1 y UAC2)
+          cat << 'EOF' >> out/.config
+          CONFIG_USB_CONFIGFS=y
+          CONFIG_USB_CONFIGFS_F_UAC1=y
+          CONFIG_USB_CONFIGFS_F_UAC1_LEGACY=y
+          CONFIG_USB_CONFIGFS_F_UAC2=y
+          CONFIG_SND_USB_AUDIO=y
+          EOF
+
+          export PATH="$GITHUB_WORKSPACE/clang/bin:$GITHUB_WORKSPACE/gcc64/bin:$GITHUB_WORKSPACE/gcc32/bin:$PATH"
+          make O=out ARCH=arm64 olddefconfig
+
+          echo "=== Verificando configuración UAC resultante ==="
+          grep "UAC" out/.config || true
+
+      - name: Compilar Kernel (Image.gz-dtb)
+        run: |
+          cd kernel
+          export PATH="$GITHUB_WORKSPACE/clang/bin:$GITHUB_WORKSPACE/gcc64/bin:$GITHUB_WORKSPACE/gcc32/bin:$PATH"
+          make -j$(nproc --all) O=out \
+            ARCH=arm64 \
+            CC=clang \
+            CLANG_TRIPLE=aarch64-linux-gnu- \
+            CROSS_COMPILE=aarch64-linux-android- \
+            CROSS_COMPILE_ARM32=arm-linux-androideabi- \
+            Image.gz-dtb
+
+      - name: Empaquetar en instalador AnyKernel3 (.zip)
+        run: |
+          git clone --depth=1 https://github.com/osm0sis/AnyKernel3.git AnyKernel3
+          cp kernel/out/arch/arm64/boot/Image.gz-dtb AnyKernel3/
+
+          cat << 'EOF' > AnyKernel3/anykernel.sh
+          # AnyKernel3 Ramdisk Mod Script
+          properties() { '
+          kernel.string=LineageOS 22.2 H873 UAC1/UAC2 USB DAC Kernel
+          do.devicecheck=0
+          do.modules=0
+          do.systemless=1
+          do.cleanup=1
+          do.cleanuponabort=0
+          '; }
+          block=/dev/block/bootdevice/by-name/boot;
+          is_slot_device=0;
+          ramdisk_compression=auto;
+          patch_vbmeta_flag=auto;
+          . tools/ak3-core.sh;
+          dump_boot;
+          write_boot;
+          EOF
+
+          cd AnyKernel3
+          zip -r9 "$GITHUB_WORKSPACE/H873-LOS22.2-UAC-Kernel.zip" * -x .git README.md *placeholder
+
+      - name: Subir archivos compilados (Artifacts)
+        uses: actions/upload-artifact@v4
+        with:
+          name: H873-UAC-Kernel-Package
+          path: |
+            H873-LOS22.2-UAC-Kernel.zip
+            kernel/out/arch/arm64/boot/Image.gz-dtb
