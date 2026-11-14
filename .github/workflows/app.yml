@@ -1,0 +1,35 @@
+name: Build USB Audio Bridge APK
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Instalar JDK 17 y NDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Clonar UsbAudioBridge con submodulos (oboe + tinyalsa)
+        run: |
+          git clone --recursive https://github.com/Flopster101/UsbAudioBridge.git
+
+      - name: Compilar APK (con libusbaudio.so incluido)
+        working-directory: UsbAudioBridge
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug
+
+      - name: Verificar que libusbaudio.so este dentro del APK
+        working-directory: UsbAudioBridge
+        run: |
+          unzip -l app/build/outputs/apk/debug/*.apk | grep libusbaudio.so
+
+      - name: Subir APK listo
+        uses: actions/upload-artifact@v4
+        with:
+          name: UsbAudioBridge-Fixed-APK
+          path: UsbAudioBridge/app/build/outputs/apk/debug/*.apk
