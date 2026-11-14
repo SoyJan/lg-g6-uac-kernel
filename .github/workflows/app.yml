@@ -1,4 +1,4 @@
-name: Build Patched UsbAudioBridge APK
+name: Build Optimized UsbAudioBridge APK
 
 on:
   workflow_dispatch:
@@ -13,7 +13,7 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Clonar UsbAudioBridge con submodulos (oboe + tinyalsa)
+      - name: Clonar UsbAudioBridge con submodulos
         run: |
           git clone --recursive https://github.com/Flopster101/UsbAudioBridge.git
 
@@ -21,21 +21,20 @@ jobs:
         working-directory: UsbAudioBridge
         run: |
           sed -i 's/targets.add("gadget_monitor_pause")/targets.add("gadget_monitor_pause")\n                targets.add("usbaudio")/' app/build.gradle.kts
-          grep -n -C 3 'targets.add' app/build.gradle.kts
 
-      - name: Compilar APK completo
+      - name: Compilar APK OptimizedDebug (-O3 -ffast-math + R8)
         working-directory: UsbAudioBridge
         run: |
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon
+          ./gradlew assembleOptimizedDebug --no-daemon
 
-      - name: Verificar que libusbaudio.so ahora SI esta dentro del APK
+      - name: Verificar libusbaudio.so dentro del APK
         working-directory: UsbAudioBridge
         run: |
-          unzip -l app/build/outputs/apk/debug/app-debug.apk | grep libusbaudio.so
+          unzip -l app/build/outputs/apk/optimizedDebug/*.apk | grep libusbaudio.so
 
-      - name: Subir APK reparado
+      - name: Subir APK Optimizado
         uses: actions/upload-artifact@v4
         with:
-          name: UsbAudioBridge-Fixed-APK
-          path: UsbAudioBridge/app/build/outputs/apk/debug/app-debug.apk
+          name: UsbAudioBridge-Optimized-APK
+          path: UsbAudioBridge/app/build/outputs/apk/optimizedDebug/*.apk
